@@ -76,39 +76,58 @@ def calculate_indicators(data):
         return None, None, None, None, None, None
     
     try:
-        # Ensure we're working with Series objects, not DataFrames
-        close_series = data['Close'].squeeze()
-        high_series = data['High'].squeeze()
-        low_series = data['Low'].squeeze()
+        # Convert data to Series if it's not already
+        close_prices = data['Close']
+        if isinstance(close_prices, pd.DataFrame):
+            close_prices = close_prices.squeeze()
         
-        # Bollinger Bands
-        bb_indicator = BollingerBands(close_series, window=20, window_dev=2)
+        high_prices = data['High']
+        if isinstance(high_prices, pd.DataFrame):
+            high_prices = high_prices.squeeze()
+            
+        low_prices = data['Low']
+        if isinstance(low_prices, pd.DataFrame):
+            low_prices = low_prices.squeeze()
+
+        # Bollinger Bands (using 20-day SMA)
+        bb_indicator = BollingerBands(close=close_prices, window=20, window_dev=2)
         bb = pd.DataFrame({
-            'Close': close_series,
+            'Close': close_prices,
             'bb_h': bb_indicator.bollinger_hband(),
             'bb_l': bb_indicator.bollinger_lband()
         })
 
-        # MACD
-        macd_indicator = MACD(close_series)
+        # MACD (12, 26, 9 are standard parameters)
+        macd_indicator = MACD(
+            close=close_prices,
+            window_slow=26,
+            window_fast=12,
+            window_sign=9
+        )
         macd = macd_indicator.macd()
         
-        # RSI
-        rsi = RSIIndicator(close_series).rsi()
+        # RSI (14 days is standard)
+        rsi_indicator = RSIIndicator(close=close_prices, window=14)
+        rsi = rsi_indicator.rsi()
         
-        # SMA - Added window parameter
-        sma = SMAIndicator(close_series, window=20).sma_indicator()
+        # SMA with explicit parameters
+        sma_indicator = SMAIndicator(close=close_prices, window=20)
+        sma = sma_indicator.sma_indicator()
         
-        # EMA - Added window parameter
-        ema = EMAIndicator(close_series, window=20).ema_indicator()
+        # EMA with explicit parameters
+        ema_indicator = EMAIndicator(close=close_prices, window=20)
+        ema = ema_indicator.ema_indicator()
         
         # Ichimoku
         ichimoku = IchimokuIndicator(
-            high=high_series,
-            low=low_series
+            high=high_prices,
+            low=low_prices,
+            window1=9,
+            window2=26,
+            window3=52
         )
         ichimoku_data = pd.DataFrame({
-            'Close': close_series,
+            'Close': close_prices,
             'ichimoku_a': ichimoku.ichimoku_a(),
             'ichimoku_b': ichimoku.ichimoku_b(),
             'ichimoku_base': ichimoku.ichimoku_base_line()
@@ -119,7 +138,7 @@ def calculate_indicators(data):
     except Exception as e:
         st.error(f"Error calculating indicators: {str(e)}")
         return None, None, None, None, None, None
-        
+
 def tech_indicators(data):
     if not validate_data(data):
         st.error("No valid data available for technical analysis")
