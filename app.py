@@ -42,71 +42,91 @@ def download_data(symbol, start_date, end_date):
         if df.empty:
             st.error(f"No data found for {symbol}")
             return None
+        # Ensure data has required columns
+        required_columns = ['Close', 'High', 'Low']
+        if not all(col in df.columns for col in required_columns):
+            st.error(f"Missing required columns: {[col for col in required_columns if col not in df.columns]}")
+            return None
         return df
     except Exception as e:
         st.error(f"Error downloading data: {str(e)}")
         return None
 
+def validate_data(data):
+    """Validate data for technical analysis calculations"""
+    if data is None:
+        return False
+    required_columns = ['Close', 'High', 'Low']
+    return all(col in data.columns for col in required_columns)
+
 def plot_chart(data, column, title):
     try:
-        fig = px.line(data, x=data.index, y=column, title=title)
+        if isinstance(column, str):
+            y_data = data[column] if isinstance(column, str) else column
+        else:
+            y_data = column
+        fig = px.line(data, x=data.index, y=y_data, title=title)
         st.plotly_chart(fig)
     except Exception as e:
         st.error(f"Error plotting chart: {str(e)}")
 
+def calculate_indicators(data):
+    """Calculate all technical indicators at once"""
+    if not validate_data(data):
+        return None, None, None, None, None, None
+    
+    try:
+        # Bollinger Bands
+        bb_indicator = BollingerBands(data['Close'].squeeze(), window=20, window_dev=2)
+        bb = pd.DataFrame({
+            'Close': data['Close'],
+            'bb_h': bb_indicator.bollinger_hband(),
+            'bb_l': bb_indicator.bollinger_lband()
+        })
+
+        # MACD
+        macd_indicator = MACD(data['Close'].squeeze())
+        macd = macd_indicator.macd()
+        
+        # RSI
+        rsi = RSIIndicator(data['Close'].squeeze()).rsi()
+        
+        # SMA
+        sma = SMAIndicator(data['Close'].squeeze()).sma_indicator()
+        
+        # EMA
+        ema = EMAIndicator(data['Close'].squeeze()).ema_indicator()
+        
+        # Ichimoku
+        ichimoku = IchimokuIndicator(
+            high=data['High'].squeeze(),
+            low=data['Low'].squeeze()
+        )
+        ichimoku_data = pd.DataFrame({
+            'Close': data['Close'],
+            'ichimoku_a': ichimoku.ichimoku_a(),
+            'ichimoku_b': ichimoku.ichimoku_b(),
+            'ichimoku_base': ichimoku.ichimoku_base_line()
+        })
+        
+        return bb, macd, rsi, sma, ema, ichimoku_data
+    
+    except Exception as e:
+        st.error(f"Error calculating indicators: {str(e)}")
+        return None, None, None, None, None, None
+
 def tech_indicators(data):
-    if data is None:
-        st.error("No data available for technical analysis")
+    if not validate_data(data):
+        st.error("No valid data available for technical analysis")
         return
 
     st.header('Technical Indicators')
     option = st.radio('Choose a Technical Indicator to Visualize', 
                      ['Close', 'BB', 'MACD', 'RSI', 'SMA', 'EMA', 'Ichimoku'])
 
-    try:
-        # Bollinger bands with specified window
-        bb_indicator = BollingerBands(data['Close'], window=20, window_dev=2)
-        bb = data.copy()
-        bb['bb_h'] = bb_indicator.bollinger_hband()
-        bb['bb_l'] = bb_indicator.bollinger_lband()
-        bb = bb[['Close', 'bb_h', 'bb_l']]
-
-        # Other indicators with specified windows
-        macd = MACD(
-            data['Close'],
-            window_slow=26,
-            window_fast=12,
-            window_sign=9
-        ).macd()
-        
-        rsi = RSIIndicator(
-            data['Close'],
-            window=14
-        ).rsi()
-        
-        sma = SMAIndicator(
-            data['Close'],
-            window=14
-        ).sma_indicator()
-        
-        ema = EMAIndicator(
-            data['Close'],
-            window=14
-        ).ema_indicator()
-
-        # Ichimoku with default periods
-        ichimoku = IchimokuIndicator(
-            high=data['High'],
-            low=data['Low'],
-            window1=9,
-            window2=26,
-            window3=52
-        )
-        ichimoku_data = data.copy()
-        ichimoku_data['ichimoku_a'] = ichimoku.ichimoku_a()
-        ichimoku_data['ichimoku_b'] = ichimoku.ichimoku_b()
-        ichimoku_data['ichimoku_base_line'] = ichimoku.ichimoku_base_line()
-
+    bb, macd, rsi, sma, ema, ichimoku_data = calculate_indicators(data)
+    
+    if all(v is not None for v in [bb, macd, rsi, sma, ema, ichimoku_data]):
         if option == 'Close':
             plot_chart(data, 'Close', 'Closing Price')
         elif option == 'BB':
@@ -123,13 +143,9 @@ def tech_indicators(data):
             plot_chart(pd.DataFrame({'EMA': ema}, index=data.index), 'EMA', 'Exponential Moving Average')
         elif option == 'Ichimoku':
             fig = px.line(ichimoku_data, x=ichimoku_data.index, 
-                         y=['Close', 'ichimoku_a', 'ichimoku_b'], 
+                         y=['Close', 'ichimoku_a', 'ichimoku_b', 'ichimoku_base'], 
                          title='Ichimoku Cloud')
             st.plotly_chart(fig)
-
-    except Exception as e:
-        st.error(f"Error calculating indicators: {str(e)}")
-        st.error("Please make sure your data contains the required columns (Close, High, Low)")
 
 def sentiment_analysis(symbol):
     st.header(f"News Sentiment for {symbol}")
@@ -148,66 +164,144 @@ def sentiment_analysis(symbol):
             if headline:
                 sentiment_score = analyzer.polarity_scores(headline)
                 st.write(f"Headline: {headline}")
-                st.write(f"Sentiment Score: {sentiment_score}")
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.write(f"Positive: {sentiment_score['pos']:.2f}")
+                with col2:
+                    st.write(f"Neutral: {sentiment_score['neu']:.2f}")
+                with col3:
+                    st.write(f"Negative: {sentiment_score['neg']:.2f}")
                 st.write("---")
                 
     except Exception as e:
         st.error(f"Error analyzing sentiment: {str(e)}")
 
 def backtest_strategy(data):
-    if data is None:
-        st.error("No data available for backtesting")
+    if not validate_data(data):
+        st.error("No valid data available for backtesting")
         return
 
     st.header("Backtesting Strategy")
     try:
-        rsi = RSIIndicator(data['Close']).rsi()
-        buy_signals = rsi < 30
-        sell_signals = rsi > 70
+        rsi = RSIIndicator(data['Close'].squeeze()).rsi()
+        
+        # Allow user to adjust RSI thresholds
+        col1, col2 = st.columns(2)
+        with col1:
+            oversold = st.slider("Oversold threshold", 20, 40, 30)
+        with col2:
+            overbought = st.slider("Overbought threshold", 60, 80, 70)
+        
+        buy_signals = rsi < oversold
+        sell_signals = rsi > overbought
 
         buy_dates = data.index[buy_signals]
         sell_dates = data.index[sell_signals]
 
-        if len(buy_dates) > 0:
-            st.write("Buy Signals (RSI < 30):")
-            st.write(buy_dates.strftime('%Y-%m-%d').tolist())
-        else:
-            st.write("No buy signals found in this period")
+        # Calculate potential returns
+        if len(buy_dates) > 0 and len(sell_dates) > 0:
+            returns = []
+            for buy_date in buy_dates:
+                # Find next sell date after buy date
+                next_sells = sell_dates[sell_dates > buy_date]
+                if len(next_sells) > 0:
+                    sell_date = next_sells[0]
+                    buy_price = data.loc[buy_date, 'Close']
+                    sell_price = data.loc[sell_date, 'Close']
+                    returns.append((sell_price - buy_price) / buy_price * 100)
+            
+            if returns:
+                st.write(f"Average Return per Trade: {np.mean(returns):.2f}%")
+                st.write(f"Number of Trades: {len(returns)}")
 
-        if len(sell_dates) > 0:
-            st.write("Sell Signals (RSI > 70):")
-            st.write(sell_dates.strftime('%Y-%m-%d').tolist())
-        else:
-            st.write("No sell signals found in this period")
+        # Display signals
+        col1, col2 = st.columns(2)
+        with col1:
+            if len(buy_dates) > 0:
+                st.write(f"Buy Signals (RSI < {oversold}):")
+                st.write(buy_dates.strftime('%Y-%m-%d').tolist())
+            else:
+                st.write("No buy signals found in this period")
+
+        with col2:
+            if len(sell_dates) > 0:
+                st.write(f"Sell Signals (RSI > {overbought}):")
+                st.write(sell_dates.strftime('%Y-%m-%d').tolist())
+            else:
+                st.write("No sell signals found in this period")
 
     except Exception as e:
         st.error(f"Error in backtesting: {str(e)}")
 
 def portfolio_performance(data):
-    if data is None:
-        st.error("No data available for portfolio analysis")
+    if not validate_data(data):
+        st.error("No valid data available for portfolio analysis")
         return
 
     st.header("Portfolio Performance")
-    shares = st.number_input("Enter number of shares", min_value=1, value=100)
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        shares = st.number_input("Enter number of shares", min_value=1, value=100)
+    with col2:
+        investment_date = st.date_input(
+            "Investment Date",
+            min_value=data.index[0].date(),
+            max_value=data.index[-1].date(),
+            value=data.index[-1].date()
+        )
+    
     if st.button("Add to Portfolio"):
-        st.session_state.portfolio[ticker_symbol] = {
-            'shares': shares,
-            'price': data['Close'].iloc[-1]
-        }
+        try:
+            price = data.loc[str(investment_date), 'Close']
+            st.session_state.portfolio[ticker_symbol] = {
+                'shares': shares,
+                'price': price,
+                'date': investment_date
+            }
+            st.success(f"Added {shares} shares of {ticker_symbol} to portfolio")
+        except Exception as e:
+            st.error(f"Error adding to portfolio: {str(e)}")
     
     if st.session_state.portfolio:
+        total_value = 0
+        total_cost = 0
+        
         for stock, info in st.session_state.portfolio.items():
-            current_price = data['Close'].iloc[-1]
-            roi = ((current_price - info['price']) / info['price'] * 100)
-            st.write(f"{stock}:")
-            st.write(f"Shares: {info['shares']}")
-            st.write(f"Initial Price: ${info['price']:.2f}")
-            st.write(f"Current Price: ${current_price:.2f}")
-            st.write(f"ROI: {roi:.2f}%")
-            st.write("---")
+            try:
+                current_price = data['Close'].iloc[-1]
+                position_value = current_price * info['shares']
+                cost_basis = info['price'] * info['shares']
+                roi = ((current_price - info['price']) / info['price'] * 100)
+                
+                total_value += position_value
+                total_cost += cost_basis
+                
+                st.write(f"### {stock}")
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.write(f"Shares: {info['shares']}")
+                    st.write(f"Entry Date: {info['date']}")
+                with col2:
+                    st.write(f"Entry Price: ${info['price']:.2f}")
+                    st.write(f"Current Price: ${current_price:.2f}")
+                with col3:
+                    st.write(f"Position Value: ${position_value:.2f}")
+                    st.write(f"ROI: {roi:.2f}%")
+                st.write("---")
+            
+            except Exception as e:
+                st.error(f"Error calculating performance for {stock}: {str(e)}")
+        
+        # Portfolio summary
+        total_roi = ((total_value - total_cost) / total_cost * 100) if total_cost > 0 else 0
+        st.write("## Portfolio Summary")
+        st.write(f"Total Value: ${total_value:.2f}")
+        st.write(f"Total Cost: ${total_cost:.2f}")
+        st.write(f"Total ROI: {total_roi:.2f}%")
+        
     else:
-        st.write("Portfolio is empty. Add some stocks to track performance.")
+        st.info("Portfolio is empty. Add some stocks to track performance.")
 
 def stock_info(symbol):
     st.header('Stock Information')
@@ -215,47 +309,32 @@ def stock_info(symbol):
         ticker = yf.Ticker(symbol)
         info = ticker.info
         
-        col1, col2 = st.columns(2)
+        # Basic Info
+        col1, col2, col3 = st.columns(3)
         with col1:
-            st.write(f"**Company Name:** {info.get('longName', 'N/A')}")
+            st.write("### Company Info")
+            st.write(f"**Name:** {info.get('longName', 'N/A')}")
             st.write(f"**Sector:** {info.get('sector', 'N/A')}")
             st.write(f"**Industry:** {info.get('industry', 'N/A')}")
+        
         with col2:
-            st.write(f"**Market Cap:** {info.get('marketCap', 'N/A')}")
-            st.write(f"**Dividend Yield:** {info.get('dividendYield', 'N/A')}")
+            st.write("### Market Data")
+            st.write(f"**Market Cap:** ${info.get('marketCap', 0):,.2f}")
+            st.write(f"**Volume:** {info.get('volume', 'N/A'):,}")
             st.write(f"**P/E Ratio:** {info.get('trailingPE', 'N/A')}")
-    except Exception as e:
-        st.error(f"Error fetching stock info: {str(e)}")
-
-def main():
-    # Download data
-    data = download_data(ticker_symbol, start_date, end_date)
-    st.session_state.data = data
-    
-    # Main menu
-    menu_option = st.sidebar.selectbox(
-        'Select Feature',
-        ['Visualize', 'Recent Data', 'Stock Info', 'Backtest Strategy', 
-         'Portfolio Performance', 'News Sentiment']
-    )
-    
-    # Display selected feature
-    if menu_option == 'Visualize':
-        tech_indicators(data)
-    elif menu_option == 'Recent Data':
-        if data is not None:
-            st.header('Recent Data')
-            st.dataframe(data.tail(10))
-        else:
-            st.error("No data available to display")
-    elif menu_option == 'Stock Info':
-        stock_info(ticker_symbol)
-    elif menu_option == 'Backtest Strategy':
-        backtest_strategy(data)
-    elif menu_option == 'Portfolio Performance':
-        portfolio_performance(data)
-    elif menu_option == 'News Sentiment':
-        sentiment_analysis(ticker_symbol)
-
-if __name__ == '__main__':
-    main()
+        
+        with col3:
+            st.write("### Dividends & Yields")
+            st.write(f"**Dividend Yield:** {info.get('dividendYield', 0) * 100:.2f}%")
+            st.write(f"**Forward Yield:** {info.get('dividendRate', 'N/A')}")
+            st.write(f"**Payout Ratio:** {info.get('payoutRatio', 'N/A')}")
+        
+        # Additional metrics
+        st.write("### Key Metrics")
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("52 Week High", f"${info.get('fiftyTwoWeekHigh', 'N/A')}")
+        with col2:
+            st.metric("52 Week Low", f"${info.get('fiftyTwoWeekLow', 'N/A')}")
+        with col3:
+            st.metric("50
