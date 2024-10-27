@@ -282,9 +282,10 @@ def portfolio_performance(data):
     
     if st.button("Add to Portfolio"):
         try:
-            price = data.loc[str(investment_date), 'Close']
+            # Convert to float to ensure we're working with scalar values
+            price = float(data.loc[str(investment_date), 'Close'])
             st.session_state.portfolio[ticker_symbol] = {
-                'shares': shares,
+                'shares': int(shares),
                 'price': price,
                 'date': investment_date
             }
@@ -293,40 +294,52 @@ def portfolio_performance(data):
             st.error(f"Error adding to portfolio: {str(e)}")
     
     if st.session_state.portfolio:
-        total_value = 0
-        total_cost = 0
+        total_value = 0.0
+        total_cost = 0.0
         
         for stock, info in st.session_state.portfolio.items():
             try:
-                current_price = data['Close'].iloc[-1]
-                position_value = current_price * info['shares']
-                cost_basis = info['price'] * info['shares']
-                roi = ((current_price - info['price']) / info['price'] * 100)
+                # Ensure we're working with scalar values
+                current_price = float(data['Close'].iloc[-1])
+                shares = int(info['shares'])
+                entry_price = float(info['price'])
                 
+                # Calculate position metrics
+                position_value = current_price * shares
+                cost_basis = entry_price * shares
+                roi = ((current_price - entry_price) / entry_price * 100)
+                
+                # Update portfolio totals
                 total_value += position_value
                 total_cost += cost_basis
                 
+                # Display position information
                 st.write(f"### {stock}")
                 col1, col2, col3 = st.columns(3)
                 with col1:
-                    st.write(f"Shares: {info['shares']}")
+                    st.write(f"Shares: {shares:,}")
                     st.write(f"Entry Date: {info['date']}")
                 with col2:
-                    st.write(f"Entry Price: ${info['price']:.2f}")
-                    st.write(f"Current Price: ${current_price:.2f}")
+                    st.write(f"Entry Price: ${entry_price:,.2f}")
+                    st.write(f"Current Price: ${current_price:,.2f}")
                 with col3:
-                    st.write(f"Position Value: ${position_value:.2f}")
+                    st.write(f"Position Value: ${position_value:,.2f}")
                     st.write(f"ROI: {roi:.2f}%")
                 st.write("---")
             
             except Exception as e:
                 st.error(f"Error calculating performance for {stock}: {str(e)}")
         
-        # Portfolio summary
-        total_roi = ((total_value - total_cost) / total_cost * 100) if total_cost > 0 else 0
+        # Calculate portfolio summary using scalar values
+        if total_cost > 0:
+            total_roi = ((total_value - total_cost) / total_cost * 100)
+        else:
+            total_roi = 0.0
+            
+        # Display portfolio summary
         st.write("## Portfolio Summary")
-        st.write(f"Total Value: ${total_value:.2f}")
-        st.write(f"Total Cost: ${total_cost:.2f}")
+        st.write(f"Total Value: ${total_value:,.2f}")
+        st.write(f"Total Cost: ${total_cost:,.2f}")
         st.write(f"Total ROI: {total_roi:.2f}%")
         
     else:
