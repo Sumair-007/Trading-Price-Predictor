@@ -76,34 +76,39 @@ def calculate_indicators(data):
         return None, None, None, None, None, None
     
     try:
+        # Ensure we're working with Series objects, not DataFrames
+        close_series = data['Close'].squeeze()
+        high_series = data['High'].squeeze()
+        low_series = data['Low'].squeeze()
+        
         # Bollinger Bands
-        bb_indicator = BollingerBands(data['Close'].squeeze(), window=20, window_dev=2)
+        bb_indicator = BollingerBands(close_series, window=20, window_dev=2)
         bb = pd.DataFrame({
-            'Close': data['Close'],
+            'Close': close_series,
             'bb_h': bb_indicator.bollinger_hband(),
             'bb_l': bb_indicator.bollinger_lband()
         })
 
         # MACD
-        macd_indicator = MACD(data['Close'].squeeze())
+        macd_indicator = MACD(close_series)
         macd = macd_indicator.macd()
         
         # RSI
-        rsi = RSIIndicator(data['Close'].squeeze()).rsi()
+        rsi = RSIIndicator(close_series).rsi()
         
         # SMA
-        sma = SMAIndicator(data['Close'].squeeze()).sma_indicator()
+        sma = SMAIndicator(close_series).sma_indicator()
         
         # EMA
-        ema = EMAIndicator(data['Close'].squeeze()).ema_indicator()
+        ema = EMAIndicator(close_series).ema_indicator()
         
         # Ichimoku
         ichimoku = IchimokuIndicator(
-            high=data['High'].squeeze(),
-            low=data['Low'].squeeze()
+            high=high_series,
+            low=low_series
         )
         ichimoku_data = pd.DataFrame({
-            'Close': data['Close'],
+            'Close': close_series,
             'ichimoku_a': ichimoku.ichimoku_a(),
             'ichimoku_b': ichimoku.ichimoku_b(),
             'ichimoku_base': ichimoku.ichimoku_base_line()
@@ -124,28 +129,31 @@ def tech_indicators(data):
     option = st.radio('Choose a Technical Indicator to Visualize', 
                      ['Close', 'BB', 'MACD', 'RSI', 'SMA', 'EMA', 'Ichimoku'])
 
-    bb, macd, rsi, sma, ema, ichimoku_data = calculate_indicators(data)
-    
-    if all(v is not None for v in [bb, macd, rsi, sma, ema, ichimoku_data]):
-        if option == 'Close':
-            plot_chart(data, 'Close', 'Closing Price')
-        elif option == 'BB':
-            fig = px.line(bb, x=bb.index, y=['Close', 'bb_h', 'bb_l'], 
-                         title='Bollinger Bands')
-            st.plotly_chart(fig)
-        elif option == 'MACD':
-            plot_chart(pd.DataFrame({'MACD': macd}, index=data.index), 'MACD', 'MACD')
-        elif option == 'RSI':
-            plot_chart(pd.DataFrame({'RSI': rsi}, index=data.index), 'RSI', 'RSI')
-        elif option == 'SMA':
-            plot_chart(pd.DataFrame({'SMA': sma}, index=data.index), 'SMA', 'Simple Moving Average')
-        elif option == 'EMA':
-            plot_chart(pd.DataFrame({'EMA': ema}, index=data.index), 'EMA', 'Exponential Moving Average')
-        elif option == 'Ichimoku':
-            fig = px.line(ichimoku_data, x=ichimoku_data.index, 
-                         y=['Close', 'ichimoku_a', 'ichimoku_b', 'ichimoku_base'], 
-                         title='Ichimoku Cloud')
-            st.plotly_chart(fig)
+    try:
+        bb, macd, rsi, sma, ema, ichimoku_data = calculate_indicators(data)
+        
+        if all(v is not None for v in [bb, macd, rsi, sma, ema, ichimoku_data]):
+            if option == 'Close':
+                plot_chart(data, 'Close', 'Closing Price')
+            elif option == 'BB':
+                fig = px.line(bb, x=bb.index, y=['Close', 'bb_h', 'bb_l'], 
+                             title='Bollinger Bands')
+                st.plotly_chart(fig)
+            elif option == 'MACD':
+                plot_chart(pd.DataFrame({'MACD': macd}, index=data.index), 'MACD', 'MACD')
+            elif option == 'RSI':
+                plot_chart(pd.DataFrame({'RSI': rsi}, index=data.index), 'RSI', 'RSI')
+            elif option == 'SMA':
+                plot_chart(pd.DataFrame({'SMA': sma}, index=data.index), 'SMA', 'Simple Moving Average')
+            elif option == 'EMA':
+                plot_chart(pd.DataFrame({'EMA': ema}, index=data.index), 'EMA', 'Exponential Moving Average')
+            elif option == 'Ichimoku':
+                fig = px.line(ichimoku_data, x=ichimoku_data.index, 
+                             y=['Close', 'ichimoku_a', 'ichimoku_b', 'ichimoku_base'], 
+                             title='Ichimoku Cloud')
+                st.plotly_chart(fig)
+    except Exception as e:
+        st.error(f"Error in technical indicators: {str(e)}")
 
 def sentiment_analysis(symbol):
     st.header(f"News Sentiment for {symbol}")
@@ -183,7 +191,9 @@ def backtest_strategy(data):
 
     st.header("Backtesting Strategy")
     try:
-        rsi = RSIIndicator(data['Close'].squeeze()).rsi()
+        # Ensure we're working with a Series object
+        close_series = data['Close'].squeeze()
+        rsi = RSIIndicator(close_series).rsi()
         
         # Allow user to adjust RSI thresholds
         col1, col2 = st.columns(2)
