@@ -177,32 +177,122 @@ def tech_indicators(data):
 def sentiment_analysis(symbol):
     st.header(f"News Sentiment for {symbol}")
     try:
-        ticker = yf.Ticker(symbol)
-        news = ticker.news[:5] if ticker.news else []
-        
-        if not news:
-            st.warning("No recent news found for this symbol")
-            return
-            
+        # Initialize VADER sentiment analyzer
         analyzer = SentimentIntensityAnalyzer()
         
-        for article in news:
-            headline = article.get('title', '')
-            if headline:
+        # Get stock info and news
+        ticker = yf.Ticker(symbol)
+        
+        # Try to get news, handle empty case gracefully
+        try:
+            news = ticker.news
+            if not news:
+                raise ValueError("No news data available")
+        except:
+            # Fallback to getting basic info if news fails
+            st.warning(f"Unable to fetch recent news for {symbol}. Displaying company information instead.")
+            
+            try:
+                info = ticker.info
+                if info:
+                    st.subheader("Company Information")
+                    if 'longBusinessSummary' in info:
+                        st.write("### Business Summary")
+                        st.write(info['longBusinessSummary'])
+                        
+                        # Analyze sentiment of business summary
+                        sentiment_score = analyzer.polarity_scores(info['longBusinessSummary'])
+                        st.write("### Business Summary Sentiment")
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.metric("Positive", f"{sentiment_score['pos']:.2f}")
+                        with col2:
+                            st.metric("Neutral", f"{sentiment_score['neu']:.2f}")
+                        with col3:
+                            st.metric("Negative", f"{sentiment_score['neg']:.2f}")
+                    else:
+                        st.info("No business summary available.")
+                return
+            except Exception as e:
+                st.error(f"Error fetching company information: {str(e)}")
+                return
+            
+        # Process news if available
+        st.subheader("Recent News Analysis")
+        
+        # Initialize sentiment aggregates
+        total_sentiment = {
+            'pos': 0,
+            'neg': 0,
+            'neu': 0,
+            'compound': 0
+        }
+        
+        # Process each news item
+        news_count = 0
+        for article in news[:10]:  # Limit to 10 most recent articles
+            if 'title' in article and article['title']:
+                news_count += 1
+                headline = article['title']
                 sentiment_score = analyzer.polarity_scores(headline)
-                st.write(f"Headline: {headline}")
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.write(f"Positive: {sentiment_score['pos']:.2f}")
-                with col2:
-                    st.write(f"Neutral: {sentiment_score['neu']:.2f}")
-                with col3:
-                    st.write(f"Negative: {sentiment_score['neg']:.2f}")
-                st.write("---")
                 
+                # Aggregate sentiments
+                for key in total_sentiment:
+                    if key in sentiment_score:
+                        total_sentiment[key] += sentiment_score[key]
+                
+                # Create expandable section for each news item
+                with st.expander(f"📰 {headline}"):
+                    if 'published' in article:
+                        st.write(f"Published: {pd.to_datetime(article['published']).strftime('%Y-%m-%d %H:%M:%S')}")
+                    
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("Positive", f"{sentiment_score['pos']:.2f}")
+                    with col2:
+                        st.metric("Neutral", f"{sentiment_score['neu']:.2f}")
+                    with col3:
+                        st.metric("Negative", f"{sentiment_score['neg']:.2f}")
+                    
+                    if 'link' in article:
+                        st.write(f"[Read full article]({article['link']})")
+        
+        # Display aggregate sentiment if we have news
+        if news_count > 0:
+            st.subheader("Overall Sentiment Analysis")
+            # Calculate averages
+            avg_sentiment = {k: v / news_count for k, v in total_sentiment.items()}
+            
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Average Positive", f"{avg_sentiment['pos']:.2f}")
+            with col2:
+                st.metric("Average Neutral", f"{avg_sentiment['neu']:.2f}")
+            with col3:
+                st.metric("Average Negative", f"{avg_sentiment['neg']:.2f}")
+            with col4:
+                st.metric("Average Compound", f"{avg_sentiment['compound']:.2f}")
+            
+            # Add sentiment interpretation
+            compound = avg_sentiment['compound']
+            if compound >= 0.05:
+                sentiment_label = "📈 Positive"
+                sentiment_color = "green"
+            elif compound <= -0.05:
+                sentiment_label = "📉 Negative"
+                sentiment_color = "red"
+            else:
+                sentiment_label = "➖ Neutral"
+                sentiment_color = "gray"
+            
+            st.markdown(f"### Overall Sentiment: :{sentiment_color}[{sentiment_label}]")
+            
+        else:
+            st.warning("No news articles were found for analysis.")
+            
     except Exception as e:
-        st.error(f"Error analyzing sentiment: {str(e)}")
-
+        st.error(f"Error in sentiment analysis: {str(e)}")
+        st.info("Try checking if the symbol is correct or try again later.")
 def backtest_strategy(data):
     if not validate_data(data):
         st.error("No valid data available for backtesting")
