@@ -337,4 +337,47 @@ def stock_info(symbol):
         with col2:
             st.metric("52 Week Low", f"${info.get('fiftyTwoWeekLow', 'N/A')}")
         with col3:
-            st.metric("50
+            st.metric("50 Day Average", f"${info.get('fiftyDayAverage', 'N/A')}")
+        with col4:
+            st.metric("200 Day Average", f"${info.get('twoHundredDayAverage', 'N/A')}")
+        
+        # Business description
+        if info.get('longBusinessSummary'):
+            st.write("### Business Summary")
+            st.write(info['longBusinessSummary'])
+            
+    except Exception as e:
+        st.error(f"Error fetching stock info: {str(e)}")
+
+def main():
+    # Download data
+    data = download_data(ticker_symbol, start_date, end_date)
+    st.session_state.data = data
+    
+    # Main menu
+    menu_option = st.sidebar.selectbox(
+        'Select Feature',
+        ['Stock Info', 'Visualize', 'Recent Data', 'Backtest Strategy', 
+         'Portfolio Performance', 'News Sentiment']
+    )
+    
+    # Display selected feature
+    if menu_option == 'Visualize':
+        tech_indicators(data)
+    elif menu_option == 'Recent Data':
+        if data is not None:
+            st.header('Recent Data')
+            st.dataframe(data.tail(10))
+        else:
+            st.error("No data available to display")
+    elif menu_option == 'Stock Info':
+        stock_info(ticker_symbol)
+    elif menu_option == 'Backtest Strategy':
+        backtest_strategy(data)
+    elif menu_option == 'Portfolio Performance':
+        portfolio_performance(data)
+    elif menu_option == 'News Sentiment':
+        sentiment_analysis(ticker_symbol)
+
+if __name__ == '__main__':
+    main()
