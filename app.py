@@ -96,11 +96,11 @@ def calculate_indicators(data):
         # RSI
         rsi = RSIIndicator(close_series).rsi()
         
-        # SMA
-        sma = SMAIndicator(close_series).sma_indicator()
+        # SMA - Added window parameter
+        sma = SMAIndicator(close_series, window=20).sma_indicator()
         
-        # EMA
-        ema = EMAIndicator(close_series).ema_indicator()
+        # EMA - Added window parameter
+        ema = EMAIndicator(close_series, window=20).ema_indicator()
         
         # Ichimoku
         ichimoku = IchimokuIndicator(
@@ -119,7 +119,7 @@ def calculate_indicators(data):
     except Exception as e:
         st.error(f"Error calculating indicators: {str(e)}")
         return None, None, None, None, None, None
-
+        
 def tech_indicators(data):
     if not validate_data(data):
         st.error("No valid data available for technical analysis")
